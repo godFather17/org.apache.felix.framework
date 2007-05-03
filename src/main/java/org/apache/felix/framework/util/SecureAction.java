@@ -1,0 +1,865 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.felix.framework.util;
+
+import java.io.*;
+import java.net.*;
+import java.security.*;
+import java.util.jar.JarFile;
+
+import org.apache.felix.framework.searchpolicy.ContentClassLoader;
+import org.apache.felix.framework.searchpolicy.ContentLoaderImpl;
+import org.apache.felix.moduleloader.JarFileX;
+import org.osgi.framework.BundleActivator;
+import org.osgi.framework.BundleContext;
+
+/**
+ * <p>
+ * This is a utility class to centralize all action that should be performed
+ * in a <tt>doPrivileged()</tt> block. To perform a secure action, simply
+ * create an instance of this class and use the specific method to perform
+ * the desired action. When an instance is created, this class will capture
+ * the security context and will then use that context when checking for
+ * permission to perform the action. Instances of this class should not be
+ * passed around since they may grant the receiver a capability to perform
+ * privileged actions.
+ * </p>
+**/
+public class SecureAction
+{
+    private static final ThreadLocal m_actions = new ThreadLocal()
+    {
+        public Object initialValue()
+        {
+            return new Actions();
+        }
+    };
+
+    protected static transient int BUFSIZE = 4096;
+
+    private AccessControlContext m_acc = null;
+
+    public SecureAction()
+    {
+        m_acc = AccessController.getContext();
+    }
+
+    public String getSystemProperty(String name, String def)
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.GET_PROPERTY_ACTION, name, def);
+                return (String) AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return System.getProperty(name, def);
+        }
+    }
+
+    public Class forName(String name) throws ClassNotFoundException
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.FOR_NAME_ACTION, name);
+                return (Class) AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                if (ex.getException() instanceof ClassNotFoundException)
+                {
+                    throw (ClassNotFoundException) ex.getException();
+                }
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return Class.forName(name);
+        }
+    }
+
+    public URL createURL(String protocol, String host,
+        int port, String path, URLStreamHandler handler)
+        throws MalformedURLException
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.CREATE_URL_ACTION, protocol, host,
+                    new Integer(port), path, handler);
+                return (URL) AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                if (ex.getException() instanceof MalformedURLException)
+                {
+                    throw (MalformedURLException) ex.getException();
+                }
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return new URL(protocol, host, port, path, handler);
+        }
+    }
+
+    public URL createURL(URL context, String spec, URLStreamHandler handler)
+        throws MalformedURLException
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.CREATE_URL_WITH_CONTEXT_ACTION, context,
+                    spec, handler);
+                return (URL) AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                if (ex.getException() instanceof MalformedURLException)
+                {
+                    throw (MalformedURLException) ex.getException();
+                }
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return new URL(context, spec, handler);
+        }
+    }
+
+    public String getAbsolutePath(File file)
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.GET_ABSOLUTE_PATH_ACTION, file);
+                return (String) AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return file.getAbsolutePath();
+        }
+    }
+
+    public boolean fileExists(File file)
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.FILE_EXISTS_ACTION, file);
+                return ((Boolean) AccessController.doPrivileged(actions, m_acc))
+                    .booleanValue();
+            }
+            catch (PrivilegedActionException ex)
+            {
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return file.exists();
+        }
+    }
+
+    public boolean isFileDirectory(File file)
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.FILE_IS_DIRECTORY_ACTION, file);
+                return ((Boolean) AccessController.doPrivileged(actions, m_acc))
+                    .booleanValue();
+            }
+            catch (PrivilegedActionException ex)
+            {
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return file.isDirectory();
+        }
+    }
+
+    public boolean mkdir(File file)
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.MAKE_DIRECTORY_ACTION, file);
+                return ((Boolean) AccessController.doPrivileged(actions, m_acc))
+                    .booleanValue();
+            }
+            catch (PrivilegedActionException ex)
+            {
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return file.mkdir();
+        }
+    }
+
+    public boolean mkdirs(File file)
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.MAKE_DIRECTORIES_ACTION, file);
+                return ((Boolean) AccessController.doPrivileged(actions, m_acc))
+                    .booleanValue();
+            }
+            catch (PrivilegedActionException ex)
+            {
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return file.mkdirs();
+        }
+    }
+
+    public File[] listDirectory(File file)
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.LIST_DIRECTORY_ACTION, file);
+                return (File[]) AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return file.listFiles();
+        }
+    }
+
+    public boolean renameFile(File oldFile, File newFile)
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.RENAME_FILE_ACTION, oldFile, newFile);
+                return ((Boolean) AccessController.doPrivileged(actions, m_acc))
+                    .booleanValue();
+            }
+            catch (PrivilegedActionException ex)
+            {
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return oldFile.renameTo(newFile);
+        }
+    }
+
+    public InputStream getFileInputStream(File file) throws IOException
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.GET_FILE_INPUT_ACTION, file);
+                return (InputStream) AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                if (ex.getException() instanceof IOException)
+                {
+                    throw (IOException) ex.getException();
+                }
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return new FileInputStream(file);
+        }
+    }
+
+    public OutputStream getFileOutputStream(File file) throws IOException
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.GET_FILE_OUTPUT_ACTION, file);
+                return (OutputStream) AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                if (ex.getException() instanceof IOException)
+                {
+                    throw (IOException) ex.getException();
+                }
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return new FileOutputStream(file);
+        }
+    }
+
+    public InputStream getURLConnectionInputStream(URLConnection conn)
+        throws IOException
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.GET_URL_INPUT_ACTION, conn);
+                return (InputStream) AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                if (ex.getException() instanceof IOException)
+                {
+                    throw (IOException) ex.getException();
+                }
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return conn.getInputStream();
+        }
+    }
+
+    public boolean deleteFile(File target)
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.DELETE_FILE_ACTION, target);
+                return ((Boolean) AccessController.doPrivileged(actions, m_acc))
+                    .booleanValue();
+            }
+            catch (PrivilegedActionException ex)
+            {
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return target.delete();
+        }
+    }
+
+    public File createTempFile(String prefix, String suffix, File dir)
+        throws IOException
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.CREATE_TMPFILE_ACTION, prefix, suffix, dir);
+                return (File) AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                if (ex.getException() instanceof IOException)
+                {
+                    throw (IOException) ex.getException();
+                }
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return File.createTempFile(prefix, suffix, dir);
+        }
+    }
+
+    public URLConnection openURLConnection(URL url) throws IOException
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.OPEN_URLCONNECTION_ACTION, url);
+                return (URLConnection) AccessController.doPrivileged(actions,
+                    m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                if (ex.getException() instanceof IOException)
+                {
+                    throw (IOException) ex.getException();
+                }
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return url.openConnection();
+        }
+    }
+
+    public JarFile getJarURLConnectionJAR(JarURLConnection connection)
+        throws IOException
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.OPEN_JARURLCONNECTIONJAR_ACTION, connection);
+                return (JarFile) AccessController.doPrivileged(actions,
+                    m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                if (ex.getException() instanceof IOException)
+                {
+                    throw (IOException) ex.getException();
+                }
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return connection.getJarFile();
+        }
+    }
+
+    public JarFileX openJAR(File file) throws IOException
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.OPEN_JARX_ACTION, file);
+                return (JarFileX) AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                if (ex.getException() instanceof IOException)
+                {
+                    throw (IOException) ex.getException();
+                }
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return new JarFileX(file);
+        }
+    }
+
+    public JarFile openJAR(File file, boolean verify) throws IOException
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.OPEN_JAR_ACTION, file, (verify ? Boolean.TRUE : Boolean.FALSE));
+                return (JarFile) AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                if (ex.getException() instanceof IOException)
+                {
+                    throw (IOException) ex.getException();
+                }
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return new JarFileX(file);
+        }
+    }
+
+    public ContentClassLoader createContentClassLoader(ContentLoaderImpl impl)
+    {
+        return createContentClassLoader(impl, null);
+    }
+
+    public ContentClassLoader createContentClassLoader(ContentLoaderImpl impl,
+        ProtectionDomain protectionDomain)
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.CREATE_CONTENTCLASSLOADER_ACTION, impl, protectionDomain);
+                return (ContentClassLoader) AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return new ContentClassLoader(impl, protectionDomain);
+        }
+    }
+
+    public void startActivator(BundleActivator activator, BundleContext context)
+        throws Exception
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.START_ACTIVATOR_ACTION, activator, context);
+                AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                throw ex.getException();
+            }
+        }
+        else
+        {
+            activator.start(context);
+        }
+    }
+
+    public void stopActivator(BundleActivator activator, BundleContext context)
+        throws Exception
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.STOP_ACTIVATOR_ACTION, activator, context);
+                AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                throw ex.getException();
+            }
+        }
+        else
+        {
+            activator.stop(context);
+        }
+    }
+
+    public void exit(int code)
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.SYSTEM_EXIT_ACTION, new Integer(code));
+                AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                // We don't need to rethrow anything since System.exit throws
+                // runtime exceptions only
+            }
+        }
+        else
+        {
+            System.exit(code);
+        }
+    }
+
+    public Policy getPolicy()
+    {
+        if (System.getSecurityManager() != null)
+        {
+            try
+            {
+                Actions actions = (Actions) m_actions.get();
+                actions.set(Actions.GET_POLICY_ACTION, null);
+                return (Policy) AccessController.doPrivileged(actions, m_acc);
+            }
+            catch (PrivilegedActionException ex)
+            {
+                throw (RuntimeException) ex.getException();
+            }
+        }
+        else
+        {
+            return Policy.getPolicy();
+        }
+    }
+
+    private static class Actions implements PrivilegedExceptionAction
+    {
+        public static final int GET_PROPERTY_ACTION = 0;
+        public static final int FOR_NAME_ACTION = 1;
+        public static final int CREATE_URL_ACTION = 2;
+        public static final int CREATE_URL_WITH_CONTEXT_ACTION = 3;
+        public static final int GET_ABSOLUTE_PATH_ACTION = 4;
+        public static final int FILE_EXISTS_ACTION = 5;
+        public static final int FILE_IS_DIRECTORY_ACTION = 6;
+        public static final int MAKE_DIRECTORY_ACTION = 7;
+        public static final int MAKE_DIRECTORIES_ACTION = 8;
+        public static final int LIST_DIRECTORY_ACTION = 9;
+        public static final int RENAME_FILE_ACTION = 10;
+        public static final int GET_FILE_INPUT_ACTION = 11;
+        public static final int GET_FILE_OUTPUT_ACTION = 12;
+        public static final int DELETE_FILE_ACTION = 13;
+        public static final int OPEN_JARX_ACTION = 14;
+        public static final int GET_URL_INPUT_ACTION = 15;
+        public static final int CREATE_CONTENTCLASSLOADER_ACTION = 16;
+        public static final int START_ACTIVATOR_ACTION = 17;
+        public static final int STOP_ACTIVATOR_ACTION = 18;
+        public static final int SYSTEM_EXIT_ACTION = 19;
+        public static final int OPEN_JAR_ACTION= 20;
+        public static final int GET_POLICY_ACTION = 21;
+        public static final int CREATE_TMPFILE_ACTION = 22;
+        public static final int OPEN_URLCONNECTION_ACTION = 23;
+        public static final int OPEN_JARURLCONNECTIONJAR_ACTION = 24;
+
+
+        private int m_action = -1;
+        private Object m_arg1 = null;
+        private Object m_arg2 = null;
+        private Object m_arg3 = null;
+        private Object m_arg4 = null;
+        private Object m_arg5 = null;
+
+        public void set(int action, Object arg1)
+        {
+            m_action = action;
+            m_arg1 = arg1;
+        }
+
+        public void set(int action, Object arg1, Object arg2)
+        {
+            m_action = action;
+            m_arg1 = arg1;
+            m_arg2 = arg2;
+        }
+
+        public void set(int action, Object arg1, Object arg2, Object arg3)
+        {
+            m_action = action;
+            m_arg1 = arg1;
+            m_arg2 = arg2;
+            m_arg3 = arg3;
+        }
+
+        public void set(int action, Object arg1, Object arg2, Object arg3,
+            Object arg4)
+        {
+            m_action = action;
+            m_arg1 = arg1;
+            m_arg2 = arg2;
+            m_arg3 = arg3;
+            m_arg4 = arg4;
+        }
+
+        public void set(int action, Object arg1, Object arg2, Object arg3,
+            Object arg4, Object arg5)
+        {
+            m_action = action;
+            m_arg1 = arg1;
+            m_arg2 = arg2;
+            m_arg3 = arg3;
+            m_arg4 = arg4;
+            m_arg5 = arg5;
+        }
+
+        private void unset()
+        {
+            m_action = -1;
+            m_arg1 = null;
+            m_arg2 = null;
+            m_arg3 = null;
+            m_arg4 = null;
+            m_arg5 = null;
+        }
+
+        public Object run() throws Exception
+        {
+            try
+            {
+                if (m_action == GET_PROPERTY_ACTION)
+                {
+                    return System.getProperty((String) m_arg1, (String) m_arg2);
+                }
+                else if (m_action == FOR_NAME_ACTION)
+                {
+                    return Class.forName((String) m_arg1);
+                }
+                else if (m_action == CREATE_URL_ACTION)
+                {
+                    return new URL((String) m_arg1, (String) m_arg2,
+                        ((Integer) m_arg3).intValue(), (String) m_arg4,
+                        (URLStreamHandler) m_arg5);
+                }
+                else if (m_action == CREATE_URL_WITH_CONTEXT_ACTION)
+                {
+                    return new URL((URL) m_arg1, (String) m_arg2,
+                        (URLStreamHandler) m_arg3);
+                }
+                else if (m_action == GET_ABSOLUTE_PATH_ACTION)
+                {
+                    return ((File) m_arg1).getAbsolutePath();
+                }
+                else if (m_action == FILE_EXISTS_ACTION)
+                {
+                    return ((File) m_arg1).exists() ? Boolean.TRUE : Boolean.FALSE;
+                }
+                else if (m_action == FILE_IS_DIRECTORY_ACTION)
+                {
+                    return ((File) m_arg1).isDirectory() ? Boolean.TRUE : Boolean.FALSE;
+                }
+                else if (m_action == MAKE_DIRECTORY_ACTION)
+                {
+                    return ((File) m_arg1).mkdir() ? Boolean.TRUE : Boolean.FALSE;
+                }
+                else if (m_action == MAKE_DIRECTORIES_ACTION)
+                {
+                    return ((File) m_arg1).mkdirs() ? Boolean.TRUE : Boolean.FALSE;
+                }
+                else if (m_action == LIST_DIRECTORY_ACTION)
+                {
+                    return ((File) m_arg1).listFiles();
+                }
+                else if (m_action == RENAME_FILE_ACTION)
+                {
+                    return ((File) m_arg1).renameTo((File) m_arg2) ? Boolean.TRUE : Boolean.FALSE;
+                }
+                else if (m_action == GET_FILE_INPUT_ACTION)
+                {
+                    return new FileInputStream((File) m_arg1);
+                }
+                else if (m_action == GET_FILE_OUTPUT_ACTION)
+                {
+                    return new FileOutputStream((File) m_arg1);
+                }
+                else if (m_action == DELETE_FILE_ACTION)
+                {
+                    return ((File) m_arg1).delete() ? Boolean.TRUE : Boolean.FALSE;
+                }
+                else if (m_action == OPEN_JARX_ACTION)
+                {
+                    return new JarFileX((File) m_arg1);
+                }
+                else if (m_action == OPEN_JAR_ACTION)
+                {
+                    return new JarFile((File) m_arg1, ((Boolean) m_arg2).booleanValue());
+                }
+                else if (m_action == GET_URL_INPUT_ACTION)
+                {
+                    return ((URLConnection) m_arg1).getInputStream();
+                }
+                else if (m_action == CREATE_CONTENTCLASSLOADER_ACTION)
+                {
+                    return new ContentClassLoader((ContentLoaderImpl) m_arg1,
+                        (ProtectionDomain) m_arg2);
+                }
+                else if (m_action == START_ACTIVATOR_ACTION)
+                {
+                    ((BundleActivator) m_arg1).start((BundleContext) m_arg2);
+                    return null;
+                }
+                else if (m_action == STOP_ACTIVATOR_ACTION)
+                {
+                    ((BundleActivator) m_arg1).stop((BundleContext) m_arg2);
+                    return null;
+                }
+                else if (m_action == SYSTEM_EXIT_ACTION)
+                {
+                    System.exit(((Integer) m_arg1).intValue());
+                }
+                else if (m_action == GET_POLICY_ACTION)
+                {
+                    return Policy.getPolicy();
+                }
+                else if (m_action == CREATE_TMPFILE_ACTION)
+                {
+                    return File.createTempFile((String) m_arg1, (String) m_arg2,
+                        (File) m_arg3);
+                }
+                else if (m_action == OPEN_URLCONNECTION_ACTION)
+                {
+                    return ((URL) m_arg1).openConnection();
+                }
+                else if (m_action == OPEN_JARURLCONNECTIONJAR_ACTION)
+                {
+                    return ((JarURLConnection) m_arg1).getJarFile();
+                }
+
+                return null;
+            }
+            finally
+            {
+                unset();
+            }
+        }
+    }
+}
