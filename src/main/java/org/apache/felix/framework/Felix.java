@@ -628,7 +628,6 @@ public class Felix extends BundleImpl implements Framework
     /**
      * @see org.osgi.framework.launch.Framework#init(org.osgi.framework.FrameworkListener[])
      */
-    @Override
     public void init(final FrameworkListener... listeners) throws BundleException
     {
         // The system bundle can only be initialized if it currently isn't started.
