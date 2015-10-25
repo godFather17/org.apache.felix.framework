@@ -27,7 +27,6 @@ import org.osgi.framework.Constants;
 import org.osgi.framework.wiring.BundleCapability;
 import org.osgi.framework.wiring.BundleRequirement;
 import org.osgi.framework.wiring.BundleRevision;
-import org.osgi.resource.Resource;
 
 public class BundleRequirementImpl implements BundleRequirement
 {
@@ -92,7 +91,7 @@ public class BundleRequirementImpl implements BundleRequirement
 
     public boolean matches(BundleCapability cap)
     {
-        return CapabilitySet.matches((BundleCapabilityImpl) cap, getFilter());
+        return CapabilitySet.matches(cap, getFilter());
     }
 
     public boolean isOptional()

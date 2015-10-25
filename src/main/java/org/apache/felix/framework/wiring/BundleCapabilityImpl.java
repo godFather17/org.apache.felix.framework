@@ -32,7 +32,6 @@ import org.apache.felix.framework.util.manifestparser.ManifestParser;
 import org.osgi.framework.Constants;
 import org.osgi.framework.wiring.BundleCapability;
 import org.osgi.framework.wiring.BundleRevision;
-import org.osgi.resource.Resource;
 
 public class BundleCapabilityImpl implements BundleCapability
 {

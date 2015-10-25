@@ -27,7 +27,6 @@ import java.net.URLStreamHandler;
 import java.security.AllPermission;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Dictionary;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
