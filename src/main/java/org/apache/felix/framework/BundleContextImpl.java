@@ -25,24 +25,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Dictionary;
 
-import org.apache.felix.framework.ext.FelixBundleContext;
-import org.osgi.framework.AdminPermission;
-import org.osgi.framework.Bundle;
-import org.osgi.framework.BundleException;
-import org.osgi.framework.BundleListener;
-import org.osgi.framework.Constants;
-import org.osgi.framework.Filter;
-import org.osgi.framework.FrameworkListener;
-import org.osgi.framework.InvalidSyntaxException;
-import org.osgi.framework.ServiceFactory;
-import org.osgi.framework.ServiceListener;
-import org.osgi.framework.ServiceObjects;
-import org.osgi.framework.ServicePermission;
-import org.osgi.framework.ServiceReference;
-import org.osgi.framework.ServiceRegistration;
-import org.osgi.framework.SynchronousBundleListener;
+import org.osgi.framework.*;
 
-class BundleContextImpl implements FelixBundleContext
+class BundleContextImpl implements BundleContext
 {
     private Logger m_logger = null;
     private Felix m_felix = null;
@@ -66,20 +51,6 @@ class BundleContextImpl implements FelixBundleContext
         throw new BundleException("Not implemented yet.");
     }
 
-    public void removeRequirement() throws BundleException
-    {
-        throw new BundleException("Not implemented yet.");
-    }
-
-    public void addCapability() throws BundleException
-    {
-        throw new BundleException("Not implemented yet.");
-    }
-
-    public void removeCapability() throws BundleException
-    {
-        throw new BundleException("Not implemented yet.");
-    }
 
     public String getProperty(String name)
     {

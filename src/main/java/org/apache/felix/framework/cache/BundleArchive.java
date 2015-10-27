@@ -63,7 +63,7 @@ import org.osgi.framework.Constants;
  * will be copied. Currently, reference URLs can only refer to "file:" targets.
  * </p>
  * @see org.apache.felix.framework.cache.BundleCache
- * @see org.apache.felix.framework.cache.BundleRevision
+ * @see org.apache.felix.framework.cache.BundleArchiveRevision
 **/
 public class BundleArchive
 {

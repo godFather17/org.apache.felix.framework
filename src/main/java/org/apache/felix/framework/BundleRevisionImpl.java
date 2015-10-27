@@ -81,11 +81,8 @@ public class BundleRevisionImpl implements BundleRevision, Resource
     /**
      * This constructor is used by the extension manager, since it needs
      * a constructor that does not throw an exception.
-     * @param logger
      * @param bundle
      * @param id
-     * @param bootPkgs
-     * @param bootPkgWildcards
      * @throws org.osgi.framework.BundleException
      */
     public BundleRevisionImpl(Bundle bundle, String id)

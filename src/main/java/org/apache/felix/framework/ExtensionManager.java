@@ -179,7 +179,7 @@ class ExtensionManager extends URLStreamHandler implements Content
      * instance.
      *
      * @param logger the logger to use.
-     * @param config the configuration to read properties from.
+     * @param configMap the configuration to read properties from.
      * @param systemBundleInfo the info to change if we need to add exports.
      */
     ExtensionManager(Logger logger, Map configMap, Felix felix)
